@@ -1,8 +1,6 @@
-﻿using ContactList;
-using System;
-using System.Collections.Generic;
-using System.IO;
-using System.Linq;
+using ContactList;
+using ConsoleTables;
+using Humanizer;
 
 namespace BasicContactList
 {
@@ -189,86 +187,158 @@ namespace BasicContactList
             }
         }
 
+        // public void GetAllContacts()
+        // {
+        //     try
+        //     {
+        //         List<string> existingContacts = File.ReadAllLines(ContactFilePath).ToList();
+
+        //         if (existingContacts.Count == 0)
+        //         {
+        //             Console.WriteLine("No contacts found.");
+        //             return;
+        //         }
+
+        //         foreach (var contact in existingContacts)
+        //         {
+        //             Console.WriteLine(contact);
+        //         }
+        //     }
+        //     catch (Exception ex)
+        //     {
+        //         Console.WriteLine($"Unexpected Error: {ex.Message}");
+        //     }
+        // }
+
         public void GetAllContacts()
         {
-            // int contactCount = Contacts.Count;
-
-            // Console.WriteLine("You have " + "contact".ToQuantity(contactCount));
-
-            // if (contactCount == 0)
-            // {
-            //     Console.WriteLine("There are no contacts added yet.");
-            //     return;
-            // }
-            List<string> existingContacts = File.ReadAllLines(ContactFilePath).ToList();
-            if (existingContacts == null)
+            try
             {
-                Console.WriteLine("There are no contacts added yet.");
-                return;
+                List<Contact> contacts = LoadContactsFromFile();
+
+                if (contacts.Count == 0)
+                {
+                    Console.WriteLine("No contacts found.");
+                    return;
+                }
+
+                var table = new ConsoleTable("Id", "Name", "Phone Number", "Email", "Contact Type", "Date Created");
+
+                foreach (var contact in contacts)
+                {
+                    table.AddRow(contact.Id, contact.Name, contact.PhoneNumber, contact.Email, ((ContactType)contact.ContactType).Humanize(), contact.CreatedAt.Humanize());
+                }
+
+                table.Write(Format.Alternative);
             }
-            else
+            catch (Exception ex)
             {
-                System.Console.WriteLine(existingContacts);
+                Console.WriteLine($"Unexpected Error: {ex.Message}");
+            }
+        }
+
+        private List<Contact> LoadContactsFromFile()
+        {
+            List<Contact> contacts = new List<Contact>();
+
+            try
+            {
+                List<string> lines = File.ReadAllLines(ContactFilePath).ToList();
+
+                foreach (string line in lines)
+                {
+                    string[] contactDetails = line.Split("|");
+
+                    if (contactDetails.Length >= 6)
+                    {
+                        int id;
+                        if (!int.TryParse(contactDetails[0].Trim().Substring(4), out id))
+                        {
+                            Console.WriteLine($"Invalid ID format: {contactDetails[0]}");
+                            continue;
+                        }
+
+                        string name = contactDetails[1].Trim().Substring(6);
+                        string phoneNumber = contactDetails[2].Trim().Substring(12);
+                        string email = contactDetails[3].Trim().Substring(8);
+
+                        string contactTypeString = contactDetails[4].Trim().Substring(6);
+                        if (!Enum.TryParse<ContactType>(contactTypeString, out ContactType contactType))
+                        {
+                            Console.WriteLine($"Invalid Contact Type format: {contactDetails[4]}");
+                            continue;
+                        }
+
+                        DateTime createdAt;
+                        if (!DateTime.TryParse(contactDetails[5].Trim().Substring(13), out createdAt))
+                        {
+                            Console.WriteLine($"Invalid Created At format: {contactDetails[5]}");
+                            continue;
+                        }
+
+                        Contact contact = new Contact();
+                        contact.Id = id;
+                        contact.Name = name;
+                        contact.PhoneNumber = phoneNumber;
+                        contact.Email = email;
+                        contact.ContactType = contactType;
+                        contact.CreatedAt = createdAt;
+
+                        contacts.Add(contact);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Unexpected Error: {ex.Message}");
             }
 
-            // var table = new ConsoleTable("Id", "Name", "Phone Number", "Email", "Contact Type", "Date Created");
-
-            // foreach (var contact in Contacts)
-            // {
-            //     table.AddRow(contact.Id, contact.Name, contact.PhoneNumber, contact.Email, ((ContactType)contact.ContactType).Humanize(), contact.CreatedAt.Humanize());
-            // }
-
-            // table.Write(Format.Alternative);
-
+            return contacts;
         }
 
         public void UpdateContact(string phoneNumber, string name, string email)
-        {
-            var contact = FindContact(phoneNumber);
-
-            if (contact is null)
-            {
-                Console.WriteLine("Contact does not exist!");
-                return;
-            }
-            else
-            {
-                contact.Name = name;
-                contact.Email = email;
-
-                UpdateContactFile(contact);
-            }
-
-
-        }
-
-        private void UpdateContactFile(Contact contact)
         {
             try
             {
                 List<string> existingContacts = File.ReadAllLines(ContactFilePath).ToList();
 
-                string? contactToUpdate = existingContacts.FirstOrDefault(line => line.Contains($"Phone No: {contact.PhoneNumber}"));
+                bool contactFound = false;
 
-                if (contactToUpdate != null)
+                for (int i = 0; i < existingContacts.Count; i++)
                 {
-                    int index = existingContacts.IndexOf(contactToUpdate);
-                    string updatedContactLine = $"Id: {contact.Id} | Name: {contact.Name} | Phone No: {contact.PhoneNumber} | E-mail: {contact.Email} | Type: {contact.ContactType} | Time Created: {contact.CreatedAt}";
+                    if (existingContacts[i].Contains($"Phone No: {phoneNumber}"))
+                    {
+                        string[] contactDetails = existingContacts[i].Split("|");
 
-                    existingContacts[index] = updatedContactLine;
+                        if (contactDetails.Length < 6)
+                        {
+                            Console.WriteLine("Invalid contact line format in the file.");
+                            return;
+                        }
 
-                    // Update the Contact.txt file
-                    File.WriteAllLines(ContactFilePath, existingContacts);
-                    Console.WriteLine("Contact updated in the file.");
+                        // Update the contact details
+                        contactDetails[1] = $" Name: {name}";
+                        contactDetails[3] = $" E-mail: {email}";
+
+                        // Reconstruct the updated contact line
+                        string updatedContactLine = string.Join(" |", contactDetails);
+
+                        // Update the contact line in the list
+                        existingContacts[i] = updatedContactLine;
+
+                        // Write the updated contacts back to the file
+                        File.WriteAllLines(ContactFilePath, existingContacts);
+
+                        Console.WriteLine("Contact updated successfully!");
+                        contactFound = true;
+                        break;
+                    }
                 }
-                else
+
+                if (!contactFound)
                 {
-                    throw new ContactsException("Contact not found in the file.");
+                    Console.WriteLine("Contact not found in the file.");
                 }
-            }
-            catch (ContactsException ex)
-            {
-                Console.WriteLine($"Error updating contacts in the file: {ex.Message}");
             }
             catch (Exception ex)
             {
